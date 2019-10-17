@@ -12,8 +12,10 @@ class Proxy
         $this->config = $config;
     }
 
-    public function pass(float $timeout = null)
+    public function pass(Request $request, float $timeout = 1)
     {
-        return '';
+        $client = new Client($this->config, $request, $timeout);
+        $content = $client->exec();
+        return $content;
     }
 }
