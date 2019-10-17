@@ -14,6 +14,6 @@ class Proxy
 
     public function pass(float $timeout = null)
     {
-
+        return '';
     }
 }
