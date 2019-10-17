@@ -8,6 +8,7 @@ class Config
 {
     protected $host;
     protected $port;
+    protected $enableSsl = false;
 
     /**
      * @return mixed
@@ -40,4 +41,21 @@ class Config
     {
         $this->port = $port;
     }
+
+    /**
+     * @return bool
+     */
+    public function getEnableSsl(): bool
+    {
+        return $this->enableSsl;
+    }
+
+    /**
+     * @param bool $enableSsl
+     */
+    public function setEnableSsl(bool $enableSsl): void
+    {
+        $this->enableSsl = $enableSsl;
+    }
+
 }
