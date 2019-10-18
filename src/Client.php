@@ -46,7 +46,7 @@ class Client
     protected $clientSetting = [];
 
 
-    public function __construct(Config $config, Request $request, float $timeout = 1)
+    public function __construct(Config $config, Request $request, float $timeout = 3.0)
     {
         $this->config = $config;
         $this->request = $request;
@@ -60,15 +60,15 @@ class Client
         return $this->followLocation;
     }
 
-    public function exec() {
-
+    public function exec():Response {
         $cli = new HttpClient($this->config->getHost(), $this->config->getPort(), $this->config->getEnableSsl());
         $header = $this->request->getHeader();
         $cli->setHeaders($header);
         $cli->set($this->clientSetting);
-        $cookies = $this->request->getCookies() ?? [];
-        $cli->setCookies($cookies);
-
+        $cookies = $this->request->getCookies();
+        if (!empty($cookies)) {
+            $cli->setCookies($cookies);
+        }
         $server = $this->request->getServer();
         $uri = $server['query_string'] ? $server['request_uri'] : $server['request_uri'].'?'.$server['query_string'];
 
@@ -85,9 +85,9 @@ class Client
             $cli->setData($rawData);
         }
 
-        if(is_string($rawData)){
-            $header['Content-Length'] = strlen($rawData);
-        }
+//        if(is_string($rawData)){
+//            $header['Content-Length'] = strlen($rawData);
+//        }
 
         $cli->execute($uri);
 
@@ -102,12 +102,14 @@ class Client
 //        }else{
 //            $this->redirected = 0;
 //        }
-        if ($method === Client::METHOD_HEAD) {
-            $content = $cli->getHeaders();
-        } else {
-            $content = $cli->getBody();
-        }
-        return $content;
+        $response = new Response();
+        $heads = $cli->getHeaders();
+        $code = $cli->getStatusCode();
+        $content = $cli->getBody();
+        $response->setStatus($code);
+        $response->setHeader($heads);
+        $response->setBody($content);
+        return $response;
     }
 
     /**
