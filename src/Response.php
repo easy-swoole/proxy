@@ -13,6 +13,8 @@ class Response
 {
     protected $status = 200;
 
+    protected $cookies = [];
+
     protected $header = [];
 
     protected $body = "";
@@ -31,6 +33,22 @@ class Response
     public function setStatus($status): void
     {
         $this->status = $status;
+    }
+
+    /**
+     * @return array
+     */
+    public function getCookies(): array
+    {
+        return $this->cookies;
+    }
+
+    /**
+     * @param array $cookies
+     */
+    public function setCookies(array $cookies): void
+    {
+        $this->cookies = $cookies;
     }
 
     /**
