@@ -45,8 +45,16 @@ class Client
 
     protected $clientSetting = [];
 
+    /**
+     * @var HttpClient
+     */
+    protected $client;
 
-    public function __construct(Config $config, Request $request, float $timeout = 1)
+    protected $uri;
+
+    protected $method;
+
+    public function __construct(Config $config, Request $request, float $timeout = 3.0)
     {
         $this->config = $config;
         $this->request = $request;
@@ -60,54 +68,89 @@ class Client
         return $this->followLocation;
     }
 
-    public function exec() {
-
-        $cli = new HttpClient($this->config->getHost(), $this->config->getPort(), $this->config->getEnableSsl());
-        $header = $this->request->getHeader();
-        $cli->setHeaders($header);
-        $cli->set($this->clientSetting);
-        $cookies = $this->request->getCookies() ?? [];
-        $cli->setCookies($cookies);
-
-        $server = $this->request->getServer();
-        $uri = $server['query_string'] ? $server['request_uri'] : $server['request_uri'].'?'.$server['query_string'];
-
-        $method = $server['request_method'];
-        $cli->setMethod($method);
+    public function exec():Response {
+        $this->client = $this->getClient();
+        $this->client->setMethod( $this->method );
         $rawData = $this->request->getRawContent();
-        if($method == self::METHOD_POST){
+        if( $this->method  == self::METHOD_POST){
             $files = $this->request->getFiles() ?? [];
             foreach ($files as $key => $item){
-                $cli->addFile($item['tmp_name'], $key, $item['type'], $item['name']);
+                $this->client->addFile($item['tmp_name'], $key, $item['type'], $item['name']);
             }
-            $cli->setData($rawData);
+            $this->client->setData($rawData);
         } else if($rawData !== null){
-            $cli->setData($rawData);
+            $this->client->setData($rawData);
         }
 
-        if(is_string($rawData)){
-            $header['Content-Length'] = strlen($rawData);
-        }
-
-        $cli->execute($uri);
+        $this->client->execute($this->uri);
 
         // 如果不设置保持长连接则直接关闭当前链接
         if ($this->request->getHeader()['connection'] !== 'keep-alive') {
-            $cli->close();
+            $this->client->close();
         }
         // 处理重定向
-//        if (($cli->statusCode == 301 || $cli->statusCode == 302) && (($this->followLocation > 0) && ($this->redirected < $this->followLocation))) {
-//            $this->redirected++;
-//            $this->setUrl($client->headers['location']);
-//        }else{
-//            $this->redirected = 0;
-//        }
-        if ($method === Client::METHOD_HEAD) {
-            $content = $cli->getHeaders();
+        if (($this->client->statusCode == 301 || $this->client->statusCode == 302) && $this->followLocation > 0 && $this->redirected < $this->followLocation) {
+            $this->redirected ++;
+            $this->uri = $this->client->headers['location'];
+            return $this->exec();
         } else {
-            $content = $cli->getBody();
+            $this->redirected = 0;
         }
-        return $content;
+        $response = new Response();
+        // 取出header里面的set-cookie
+        $heads = $this->client->getHeaders();
+        unset($heads['set-cookie']);
+        $cookies = $this->client->set_cookie_headers;
+        $cookies = empty($cookies) ? [] : $cookies;
+        $newCookies = $this->getCookies($cookies);
+        $code = $this->client->getStatusCode();
+        $content = $this->client->getBody();
+        $response->setStatus($code);
+        $response->setCookies($newCookies);
+        $response->setHeader($heads);
+        $response->setBody($content);
+        return $response;
+    }
+
+    public function getClient(): HttpClient
+    {
+        if ($this->client instanceof HttpClient) {
+            return $this->client;
+        }
+        $this->client = new HttpClient($this->config->getHost(), $this->config->getPort(), $this->config->getEnableSsl());
+        $this->client->set($this->clientSetting);
+        $header = $this->request->getHeader();
+        $this->client->setHeaders($header);
+        $cookies = $this->request->getCookies();
+        if (!empty($cookies)) {
+            $this->client->setCookies($cookies);
+        }
+        $server = $this->request->getServer();
+        $this->uri = empty($server['query_string']) ? $server['request_uri'] : $server['request_uri'].'?'.$server['query_string'];
+        $this->method = $server['request_method'];
+        return $this->client;
+    }
+
+    private function getCookies($cookies): array {
+        $newCookies = [];
+        foreach ($cookies as $key => $cookie) {
+            $arr = explode(';', $cookie);
+            foreach ($arr as $index => $item) {
+                $item = trim($item);
+                $items = explode("=", $item);
+                $pos = $items[0];
+                if ($index === 0) {
+                    $newCookies[$key]["name"] = $pos;
+                    $newCookies[$key]["value"] = urldecode($items[1]);
+                } else {
+                    if ($pos === "expires") {
+                        $items[1] = $items[1] ? strtotime($items[1]) : time();
+                    }
+                    $newCookies[$key][$pos] = $items[1] ?? true;
+                }
+            }
+        }
+        return $newCookies;
     }
 
     /**
